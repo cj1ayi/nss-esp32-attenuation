@@ -1,0 +1,2 @@
+source,distance_m,obstacle,rssi_dbm,loss_pct,rtt_ms,throughput_mbps
+real,1.0,none,-28.32,0.0,26.19,
