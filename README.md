@@ -27,13 +27,13 @@ A low-cost testbed that measures how indoor Wi-Fi signals weaken over distance a
 
 ```mermaid
 flowchart LR
-    ESP["ESP32 node<br/><sub>main.py</sub>"] -- "UDP packets + RSSI<br/>2.4 GHz Wi-Fi" --> LAP["Laptop hotspot + logger<br/><sub>logger.py</sub>"]
-    LAP -- "echo (for RTT)" --> ESP
-    LAP --> REAL[("real_summary.csv<br/>reference_summary.csv")]
-    NS3["ns-3 simulation<br/><sub>Friis, Log-Distance</sub>"] --> SIM[("sim_summary.csv")]
+    ESP["ESP32 node (main.py)"] -->|"UDP packets + RSSI over 2.4 GHz"| LAP["Laptop hotspot + logger (logger.py)"]
+    LAP -->|"echo for RTT"| ESP
+    LAP --> REAL[("real + reference CSVs")]
+    NS3["ns-3 simulation (Friis, Log-Distance)"] --> SIM[("sim_summary.csv")]
     REAL --> PLOT["plot.py"]
     SIM --> PLOT
-    PLOT --> OUT["Real vs. simulated<br/>comparison graphs"]
+    PLOT --> OUT["Real vs. simulated graphs"]
 ```
 
 1. The **ESP32** joins the laptop's hotspot and sends a numbered UDP packet every 100 ms, carrying its current signal strength (RSSI).
@@ -280,6 +280,6 @@ The Arduino toolchain is hundreds of MB from GitHub and can be extremely slow on
 
 | Member | Role |
 | --- | --- |
-| Roberta Netanya Tan | ESP32 node, logger, measurements |
-| Winelle Tolentino | ns-3 simulation |
-| Beatrice Roldan | Data analysis and visualization |
+| Roberta Tan | ESP32 node, logger, measurements |
+| Winelle Tolentino |  |
+| Beatrice Roldan |  |
