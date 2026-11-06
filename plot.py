@@ -123,14 +123,44 @@ def save(fig, out_dir, name):
 
 # ---------------------------------------------------------------- plots
 
-def plot_rssi_vs_distance(df, out_dir, sources):
+def load_raw(data_dir):
+    """Per-packet log written by logger.py (real_raw.csv), or None if absent."""
+    path = os.path.join(data_dir, "real_raw.csv")
+    if not os.path.exists(path):
+        return None
+    raw = pd.read_csv(path)
+    for c in ["distance_m", "recv_time", "rssi_dbm", "rtt_ms", "ap_rssi_dbm"]:
+        if c not in raw.columns:
+            raw[c] = np.nan
+        raw[c] = pd.to_numeric(raw[c], errors="coerce")
+    return raw
+
+
+def plot_rssi_vs_distance(df, out_dir, sources, raw=None, average=False):
+    """By default real/reference are drawn as every individual packet (from real_raw.csv);
+    pass average=True (or no raw file) to draw one averaged point per distance instead."""
     fig, ax = plt.subplots(figsize=(7, 4.5))
     plotted = False
-    for src in sources:
+    rng = np.random.default_rng(0)
+    use_raw = raw is not None and not average
+    for i, src in enumerate(sources):
+        color = f"C{i}"
+        if use_raw and src in ("real", "reference"):
+            col = "rssi_dbm" if src == "real" else "ap_rssi_dbm"
+            g = raw[raw["obstacle"] == "none"].dropna(subset=[col])
+            if g.empty:
+                continue
+            # tiny sideways jitter (and a small offset per source) so overlapping dots stay visible
+            off = -0.03 if src == "real" else 0.03
+            x = g["distance_m"] * (1 + off + rng.uniform(-0.02, 0.02, len(g)))
+            ax.scatter(x, g[col], s=8, alpha=0.35, color=color, label=f"{label(src)}, each packet")
+            plotted = True
+            continue
         s = los_stats(df, src)
         if s.empty:
             continue
-        ax.errorbar(s["distance_m"], s["mean"], yerr=s["std"], marker="o", capsize=3, label=label(src))
+        ax.errorbar(s["distance_m"], s["mean"], yerr=s["std"], marker="o", capsize=3,
+                    color=color, label=label(src))
         plotted = True
     if not plotted:
         plt.close(fig)
@@ -141,6 +171,32 @@ def plot_rssi_vs_distance(df, out_dir, sources):
     ax.grid(alpha=0.3)
     ax.legend()
     save(fig, out_dir, "rssi_vs_distance.png")
+
+
+def plot_rssi_over_time(raw, out_dir):
+    """One small panel per test: RSSI of every packet over the 30 s run."""
+    if raw is None or raw.empty:
+        return
+    tests = list(raw.groupby("test_id", sort=True))
+    n = len(tests)
+    cols = min(n, 3)
+    rows = -(-n // cols)
+    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 3.2 * rows), squeeze=False, sharey=True)
+    for ax in axes.flat[n:]:
+        ax.set_visible(False)
+    for k, (ax, (tid, g)) in enumerate(zip(axes.flat, tests)):
+        t = g["recv_time"] - g["recv_time"].min()
+        ax.plot(t, g["rssi_dbm"], linewidth=0.9, label="ESP32")
+        if g["ap_rssi_dbm"].notna().any():
+            ax.plot(t, g["ap_rssi_dbm"], linewidth=0.9, label="Laptop")
+        ax.set_title(f"{g['distance_m'].iloc[0]:g} m, {g['obstacle'].iloc[0]} ({tid})", fontsize=9)
+        ax.set_xlabel("Time (s)")
+        ax.grid(alpha=0.3)
+        if k % cols == 0:
+            ax.set_ylabel("RSSI (dBm)")
+        if k == 0:
+            ax.legend(fontsize=8)
+    save(fig, out_dir, "rssi_over_time.png")
 
 
 def plot_path_loss_fit(df, out_dir, sources):
@@ -272,6 +328,8 @@ def main():
     p.add_argument("--data-dir", default=None, help="default: data (or data_sample with --sample)")
     p.add_argument("--out-dir", default=".", help="where PNG/CSV outputs go")
     p.add_argument("--sample", action="store_true")
+    p.add_argument("--average", action="store_true",
+                   help="draw one averaged point per distance instead of every packet")
     args = p.parse_args()
 
     data_dir = args.data_dir or ("data_sample" if args.sample else "data")
@@ -288,7 +346,9 @@ def main():
     present = list(df["source"].unique())
     sources = [s for s in ["real", "reference"] if s in present] + sorted(s for s in present if s.startswith("sim_"))
 
-    plot_rssi_vs_distance(df, args.out_dir, sources)
+    raw = load_raw(data_dir)
+    plot_rssi_vs_distance(df, args.out_dir, sources, raw, args.average)
+    plot_rssi_over_time(raw, args.out_dir)
     fit_df = plot_path_loss_fit(df, args.out_dir, sources)
     plot_obstacles(df, args.out_dir)
     sym = plot_esp32_vs_reference(df, args.out_dir)
